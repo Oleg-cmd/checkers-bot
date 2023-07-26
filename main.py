@@ -130,14 +130,27 @@ class CheckersAI:
             for c in range(8):
                 if board[r][c] == color:
                     moves.extend(self.get_valid_moves_for_piece(board, r, c, color))
+                elif board[r][c] == (color + "K"):
+                    moves.extend(
+                        self.get_valid_moves_for_piece(board, r, c, (color + "K"))
+                    )
 
         # Проверим, есть ли обязательные удары
-        mandatory_jumps = [move for move in moves if abs(move[0][0] - move[1][0]) == 2]
+
+        mandatory_jumps = []
+        for move in moves:
+            if (
+                board[move[0][0]][move[0][1]] != "WK"
+                and board[move[0][0]][move[0][1]] != "BK"
+            ):
+                if abs(move[0][0] - move[1][0]) == 2:
+                    mandatory_jumps.append(move)
 
         # Если обязательные удары есть, вернем только их
         if mandatory_jumps:
             return mandatory_jumps
         else:
+            # print("no mandatory")
             return moves
 
     def get_valid_moves_for_piece(self, board, row, col, color):
@@ -148,6 +161,9 @@ class CheckersAI:
 
         # Проверка возможности движения вперед
         forward_direction = 1 if color == "W" else -1
+        if color == "WK":
+            forward_direction = 1
+
         backward_direction = -forward_direction  # Направление для обратного движения
 
         # Возможные направления хода для шашки
@@ -161,6 +177,12 @@ class CheckersAI:
             (2 * backward_direction, -2),
             (2 * backward_direction, 2),
         ]
+
+        if color == "WK" or color == "BK":
+            # print("___king___")
+            for i in range(1, 8):
+                for c in king_directions:
+                    move_directions.append((c[0] * i, c[1] * i))
 
         for direction in jump_directions:
             new_row, new_col = row + direction[0], col + direction[1]
@@ -182,6 +204,7 @@ class CheckersAI:
         # Если нет обязательных ударов, добавляем обычные ходы
         for direction in move_directions:
             new_row, new_col = row + direction[0], col + direction[1]
+
             if 0 <= new_row < 8 and 0 <= new_col < 8 and board[new_row][new_col] == "_":
                 moves.append(((row, col), (new_row, new_col)))
 
@@ -189,9 +212,9 @@ class CheckersAI:
 
     def promote_to_king(self, board, row, col):
         piece = board[row][col]
-        if piece == "W" and row == 0:
+        if piece == "W" and row == 7:
             board[row][col] = "WK"
-        elif piece == "B" and row == 7:
+        elif piece == "B" and row == 0:
             board[row][col] = "BK"
         return board
 
@@ -217,6 +240,7 @@ class CheckersAI:
         mandatory_jumps = [
             move for move in extra_moves if abs(move[0][0] - move[1][0]) == 2
         ]
+        draw_board(board, mandatory_jumps)
         return bool(mandatory_jumps)
 
     # Function to print the graphical representation of the move
@@ -261,7 +285,11 @@ class CheckersAI:
             if maximizing_player
             else CheckersAI.opponent_color(self.player_color)
         )
+
         possible_moves = self.get_possible_moves(board, color)
+
+        # if len(possible_moves) == 1:
+        #     draw_board(board, possible_moves)
 
         if maximizing_player:
             max_eval = float("-inf")
@@ -303,6 +331,9 @@ class CheckersAI:
 
         possible_moves = self.get_possible_moves(board, self.player_color)
 
+        if len(possible_moves) == 1:
+            draw_board(board, possible_moves)
+
         if possible_moves:
             for move in possible_moves:
                 new_board = self.make_move(copy.deepcopy(board), move)
@@ -337,6 +368,7 @@ YELLOW = (255, 204, 102)
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
+GREEN = (172, 216, 105)
 
 
 board = [
@@ -362,7 +394,7 @@ pygame.display.set_caption("Checkers Game")
 selected_piece = None
 
 
-def draw_board(board):
+def draw_board(board, extra_jumps=None):
     for row in range(8):
         for col in range(8):
             color = BROWN if (row + col) % 2 == 0 else WHITE
@@ -374,7 +406,11 @@ def draw_board(board):
 
             piece = board[row][col]
             if piece != "_":
-                piece_color = RED if piece == "W" else BLACK
+                if piece == "W" or piece == "WK":  # Fixed a typo (piece_color -> piece)
+                    piece_color = RED
+                else:
+                    piece_color = BLACK
+
                 pygame.draw.circle(
                     screen,
                     piece_color,
@@ -384,6 +420,21 @@ def draw_board(board):
                     ),
                     SQUARE_SIZE // 2 - 5,
                 )
+
+            # Highlight extra jump cells in a different color
+            if extra_jumps:
+                for move in extra_jumps:
+                    pygame.draw.rect(
+                        screen,
+                        GREEN,
+                        (
+                            move[1][1] * SQUARE_SIZE,
+                            move[1][0] * SQUARE_SIZE,
+                            SQUARE_SIZE,
+                            SQUARE_SIZE,
+                        ),
+                        3,  # Width of the highlighted border
+                    )
 
     pygame.display.update()
 
@@ -409,7 +460,7 @@ def get_extra_move_from_player(row, col):
 def main():
     global board, selected_piece
 
-    ai = CheckersAI("W", max_depth=8)
+    ai = CheckersAI("W", max_depth=5)
 
     run = True
 
@@ -430,11 +481,15 @@ def main():
                 elif event.button == 3 and selected_piece is not None:
                     # Если есть выделенная шашка и правый клик мыши, пробуем сделать ход
                     new_row, new_col = get_row_col_from_mouse(pygame.mouse.get_pos())
-
+                    print("Trying going to: ", (new_row, new_col))
                     # Проверяем, что пытаемся переместиться на пустую клетку
                     if board[new_row][new_col] == "_":
                         move = (selected_piece, (new_row, new_col))
+
                         possible_moves = ai.get_possible_moves(board, "B")
+
+                        if len(possible_moves) == 1:
+                            draw_board(board, possible_moves)
 
                         # Проверяем, что ход является допустимым
                         if move in possible_moves:
@@ -446,10 +501,7 @@ def main():
                                 # После вашего хода, проверяем наличие дополнительных ударов
                                 while ai.has_extra_jumps(board, new_row, new_col, "B"):
                                     print("has extra jump")
-                                    # Запрашиваем у игрока следующий удар
-                                    extra_move = get_extra_move_from_player(
-                                        new_row, new_col
-                                    )
+
                                     extra_moves = ai.get_valid_moves_for_piece(
                                         board, new_row, new_col, "B"
                                     )
@@ -458,6 +510,12 @@ def main():
                                         for move in extra_moves
                                         if abs(move[0][0] - move[1][0]) == 2
                                     ]
+
+                                    # Запрашиваем у игрока следующий удар
+                                    extra_move = get_extra_move_from_player(
+                                        new_row, new_col
+                                    )
+
                                     if extra_move in mandatory_jumps:
                                         # Выполняем дополнительный удар
                                         board = ai.make_move(board, extra_move)
@@ -469,6 +527,7 @@ def main():
                             # После вашего хода, делаем ход бота
                             bot_moves = ai.get_best_move(board)
                             if bot_moves:
+                                draw_board(board, bot_moves)
                                 bot_move = random.choice(bot_moves)
                                 old_board = board
                                 board = ai.make_move(board, bot_move)
@@ -483,10 +542,8 @@ def main():
                                         board, bot_move[1][0], bot_move[1][1], "W"
                                     ):
                                         print("bot has extra jump")
-                                        # Запрашиваем у игрока следующий удар
-                                        extra_move = get_extra_move_from_player(
-                                            bot_move[1][0], bot_move[1][1]
-                                        )
+
+                                        # автоудар бота
                                         extra_moves = ai.get_valid_moves_for_piece(
                                             board, bot_move[1][0], bot_move[1][1], "W"
                                         )
@@ -495,7 +552,10 @@ def main():
                                             for move in extra_moves
                                             if abs(move[0][0] - move[1][0]) == 2
                                         ]
-                                        if extra_move in mandatory_jumps:
+
+                                        if mandatory_jumps:
+                                            draw_board(board, mandatory_jumps)
+                                            extra_move = random.choice(mandatory_jumps)
                                             # Выполняем дополнительный удар
                                             board = ai.make_move(board, extra_move)
                                             new_row = extra_move[1][0]
@@ -505,6 +565,8 @@ def main():
 
                                 else:
                                     pass
+                        else:
+                            print("incorrect move")
 
         draw_board(board)
 
